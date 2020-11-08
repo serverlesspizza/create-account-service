@@ -1,0 +1,50 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Serverless Pizza Create Account Service
+
+Parameters:
+  Environment:
+    Description: The environment
+    Type: String
+
+Mappings:
+  UserPoolIdMap:
+    dev: 
+      value: '{{resolve:ssm:/serverlesspizza/cognito/user_pool_id/dev:1}}'
+    prod:
+      value: '{{resolve:ssm:/serverlesspizza/cognito/user_pool_id/prod:1}}'
+
+Resources:
+  CreateAccountServiceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Join
+        - '-'
+        - - 'serverlesspizza'
+          - !Ref Environment
+          - 'create-account'
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          REGION: !Sub ${AWS::Region}
+          ACCOUNT_ID: !Sub ${AWS::AccountId}
+          USER_POOL_ID: !FindInMap [UserPoolIdMap, !Ref Environment, value]
+      Handler: index.handler
+      Runtime: nodejs10.x
+      CodeUri: ./
+      MemorySize: 128
+      Timeout: 30
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSLambdaExecute
+        - AmazonDynamoDBFullAccess
+        - AWSLambdaSQSQueueExecutionRole
+        - AmazonCognitoPowerUser
+
+  CreateAccountServiceFunctionEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 5
+      Enabled: true
+      FunctionName: !Ref CreateAccountServiceFunction
+      EventSourceArn: !Sub arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:serverlesspizza-${Environment}-pre-signup-lambda
